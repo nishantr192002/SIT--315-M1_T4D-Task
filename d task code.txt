@@ -1,0 +1,124 @@
+// This code includes updates to handle motion detection using external interrupts
+
+// Define pin numbers
+const uint8_t BUTTON_PIN = 2;        // Button pin
+const uint8_t LED_PIN = 13;           // LED pin
+const uint8_t MOTION_PIN = 3;         // Motion sensor pin
+
+// Define motion pin for external interrupts
+const uint8_t MOTION_PIN_EXT = 5;
+
+// Temperature sensor is connected to analog pin 0
+const uint8_t TEMP_SENSOR_PIN = 0;
+
+// Initialize a variable for timer comparison
+int timer1_compare_match;
+
+// Initialize variables
+uint8_t buttonPrevState = LOW;
+uint8_t ledState = LOW;
+
+void setup() {
+  // Set pin modes
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(MOTION_PIN, INPUT);
+  pinMode(MOTION_PIN_EXT, INPUT_PULLUP);  // Set motion pin for external interrupts
+  pinMode(LED_PIN, OUTPUT);
+
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), toggleButton, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MOTION_PIN), toggleMotion, CHANGE);
+
+  // Activate PORTD
+  PCICR |= B00000100;
+
+  // Set MOTION_PIN_EXT as output
+  PCMSK2 |= (1 << MOTION_PIN_EXT);
+
+  // Disable interrupts
+  noInterrupts();
+
+  // Initialize timer 1
+  TCCR1A = 0;
+  TCCR1B = 0;
+
+  // Calculate compare value for timer to trigger every second
+  timer1_compare_match = 62500;
+
+  TCNT1 = timer1_compare_match;	
+
+  // Set prescaler to 256
+  TCCR1B |= (1 << CS12);
+
+  // Enable timer interrupt for compare mode
+  TIMSK1 |= (1 << OCIE1A);
+
+  interrupts(); // Enable interrupts
+
+  // Begin serial communication
+  Serial.begin(9600);
+}
+
+// Variables for button and motion state
+uint8_t buttonState;
+uint8_t motionValue;
+
+void loop() {
+  // Nothing here as interrupts handle the main functionalities
+}
+
+// Interrupt Service Routine for Timer 1
+ISR(TIMER1_COMPA_vect) {
+  // Preload timer with compare value
+  TCNT1 = timer1_compare_match;
+
+  // Calculate temperature
+  int reading = analogRead(TEMP_SENSOR_PIN);
+  float voltage = reading * 4.68;
+  voltage /= 1024.0;
+  float temp = (voltage - 0.5) * 100;
+
+  // Print temperature to serial monitor
+  Serial.print("Temperature: ");
+  Serial.print(temp);
+  Serial.println(" C");
+}
+
+// Interrupt Service Routine for PORT D
+ISR(PCINT2_vect) {
+  // Read motion value
+  motionValue = digitalRead(MOTION_PIN_EXT);
+
+  // Turn LED on if motion is detected, off otherwise
+  if (motionValue == true) {
+    digitalWrite(LED_PIN, true);
+    Serial.println("LED ON");
+  } else {
+    digitalWrite(LED_PIN, false);
+    Serial.println("LED OFF");
+  }
+}
+
+// Function to toggle LED based on button state
+void toggleButton() {
+  buttonState = digitalRead(BUTTON_PIN);
+
+  if (buttonState != buttonPrevState) {
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+    Serial.println("LED SWITCHED");
+  }
+}
+
+// Function to toggle LED based on motion sensor state
+void toggleMotion() {
+  motionValue = digitalRead(MOTION_PIN);
+
+  if (motionValue == true) {
+    digitalWrite(LED_PIN, true);
+    Serial.println("LED ON");
+  } else {
+    digitalWrite(LED_PIN, false);
+    Serial.println("LED OFF");
+  }
+}
